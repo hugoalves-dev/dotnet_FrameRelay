@@ -29,7 +29,7 @@ public sealed class ReleaseUpdateChecker : IAsyncDisposable
 {
     private const long RepositoryId = 1344024708;
     private const long OwnerId = 65777252;
-    private const string FallbackFullName = "vitorhugo-dotnet/dotnet_FrameRelay";
+    private const string FallbackFullName = "hugoalves-dev/dotnet_FrameRelay";
     private static readonly Uri ApiRoot = new("https://api.github.com/");
     private static readonly Regex SemVer = new(@"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly HttpClient _httpClient;

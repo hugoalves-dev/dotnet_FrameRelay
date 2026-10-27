@@ -117,7 +117,7 @@ public sealed class ReleaseUpdateCheckerTests
     private static ReleaseUpdateChecker CreateChecker(string installed, string release)
     {
         var handler = new QueueHandler(Json(HttpStatusCode.OK,
-            """{"id":1344024708,"node_id":"R_kgDOUBwwhA","full_name":"vitorhugo-dotnet/dotnet_FrameRelay","owner":{"id":65777252,"node_id":"MDQ6VXNlcjY1Nzc3MjUy","login":"vitorhugo-dotnet"}}"""),
+            """{"id":1344024708,"node_id":"R_kgDOUBwwhA","full_name":"hugoalves-dev/dotnet_FrameRelay","owner":{"id":65777252,"node_id":"MDQ6VXNlcjY1Nzc3MjUy","login":"hugoalves-dev"}}"""),
             Json(HttpStatusCode.OK, release));
         return new ReleaseUpdateChecker(new HttpClient(handler), installed);
     }
