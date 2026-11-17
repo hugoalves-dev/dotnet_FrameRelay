@@ -136,25 +136,13 @@ public sealed class DiscordExcludingAudioSource : IAudioCaptureSource
         }
     }
 
+    // Runs on every capture chunk/frame, so it only checks the cached selection. A process snapshot
+    // here is far too costly; Discord PID changes are detected by the 250 ms monitor refresh, which
+    // invalidates the selection and replaces capture (discarding its partial PCM).
     private bool ValidateCapture(WasapiLoopbackAudioSource source)
     {
         lock (_deliveryGate)
-        {
-            if (!_selectionValid || source != _source || _ignore != _selectedIgnore) return false;
-            if (_ignore)
-            {
-                try
-                {
-                    if (_findDiscord() == _selectedPid) return true;
-                }
-                catch { }
-                // Keep invalidation sticky even if Discord exits before the next frame/poll.
-                // Refresh must replace capture and its partial PCM before delivery can resume.
-                _selectionValid = false;
-                return false;
-            }
-            return true;
-        }
+            return _selectionValid && source == _source && _ignore == _selectedIgnore;
     }
 
     private void Deliver(WasapiLoopbackAudioSource source, AudioFrame frame)

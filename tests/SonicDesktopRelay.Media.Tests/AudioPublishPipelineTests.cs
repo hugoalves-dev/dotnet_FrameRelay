@@ -26,6 +26,52 @@ public sealed class AudioPublishPipelineTests
     }
 
     [Fact]
+    public async Task Frames_from_one_callback_and_jittery_callbacks_get_sample_accurate_timestamps()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var clock = new MediaSessionClock(time);
+        var capture = new FakeCapture();
+        var encoder = new FakeEncoder();
+        await using var pipeline = new AudioPublishPipeline(capture, encoder, clock);
+        var samples = new List<EncodedAudioSample>();
+        pipeline.SampleEncoded += samples.Add;
+
+        await pipeline.StartAsync(CancellationToken.None);
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+        capture.Push(Pcm20Ms(TimeSpan.Zero)); // Same WASAPI callback.
+        time.Advance(TimeSpan.FromMilliseconds(47)); // Late callback jitter.
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+        time.Advance(TimeSpan.FromMilliseconds(8)); // Early callback jitter.
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+
+        var expected = new[] { 100, 120, 140, 160 }.Select(x => TimeSpan.FromMilliseconds(x)).ToArray();
+        Assert.Equal(expected, samples.Select(x => x.Timestamp).ToArray());
+        Assert.Equal(expected, encoder.Timestamps.ToArray());
+    }
+
+    [Fact]
+    public async Task Timestamp_reanchors_to_session_clock_after_capture_stall_and_stays_monotonic()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var capture = new FakeCapture();
+        var encoder = new FakeEncoder();
+        await using var pipeline = new AudioPublishPipeline(capture, encoder, new MediaSessionClock(time));
+        var samples = new List<EncodedAudioSample>();
+        pipeline.SampleEncoded += samples.Add;
+
+        await pipeline.StartAsync(CancellationToken.None);
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+        time.Advance(TimeSpan.FromSeconds(2)); // Loopback delivers nothing during silence.
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+        capture.Push(Pcm20Ms(TimeSpan.Zero));
+
+        Assert.Equal(
+            new[] { 0, 2000, 2020 }.Select(x => TimeSpan.FromMilliseconds(x)).ToArray(),
+            samples.Select(x => x.Timestamp).ToArray());
+    }
+
+    [Fact]
     public async Task Terminal_encoder_failure_is_reported_once_and_stops_future_encoding()
     {
         var capture = new FakeCapture();
@@ -65,10 +111,12 @@ public sealed class AudioPublishPipelineTests
         public string Name => "fake-opus";
         public int EncodeCalls { get; private set; }
         public Exception? Failure { get; init; }
+        public List<TimeSpan> Timestamps { get; } = [];
 
         public EncodedAudioSample? Encode(AudioFrame frame)
         {
             EncodeCalls++;
+            Timestamps.Add(frame.Timestamp);
             if (Failure is not null) throw Failure;
             return new EncodedAudioSample(new byte[] { 1, 2, 3 }, frame.SampleCount, frame.Duration, frame.Timestamp);
         }

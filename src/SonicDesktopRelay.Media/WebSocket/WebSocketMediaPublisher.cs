@@ -68,6 +68,9 @@ public sealed class WebSocketMediaPublisher(Func<Guid, CancellationToken, Task<M
     }
     public void PublishAudio(EncodedAudioSample sample)
     {
+        // Audio is gated by recovery on purpose: a generation must start with configuration and a
+        // keyframe, the relay skips audio until that keyframe, and a cleared queue already left a
+        // sequence gap in the old generation. Audio during recovery cannot reach viewers anyway.
         try { lock (gate) { if (queue is not null && !recovery && hasAudio) Enqueue(3, 0, sample.Timestamp, sample.Duration, sample.Data); } }
         catch (Exception ex) { log.LogWarning("Discord audio sample rejected: {ErrorType}", ex.GetType().Name); lock (gate) Recover(); }
     }

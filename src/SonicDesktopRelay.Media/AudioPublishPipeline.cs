@@ -9,6 +9,11 @@ public sealed class AudioPublishPipeline(
     IAudioEncoder encoder,
     MediaSessionClock clock) : IAsyncDisposable
 {
+    // Capture callbacks jitter and can carry several frames, so timestamps follow the sample
+    // count. Re-anchor only when capture stalled (loopback delivers nothing during silence).
+    private static readonly TimeSpan ReanchorTolerance = TimeSpan.FromMilliseconds(100);
+
+    private TimeSpan? _nextTimestamp;
     private bool _started;
     private bool _running;
     private bool _disposed;
@@ -55,7 +60,7 @@ public sealed class AudioPublishPipeline(
     {
         if (!_running) return;
 
-        var timestamp = clock.Now;
+        var timestamp = NextTimestamp(frame.Duration);
         var stamped = new AudioFrame(
             frame.Data,
             frame.SampleRate,
@@ -79,6 +84,15 @@ public sealed class AudioPublishPipeline(
         if (encoded is not { } sample) return;
 
         SampleEncoded?.Invoke(sample with { Timestamp = timestamp });
+    }
+
+    private TimeSpan NextTimestamp(TimeSpan duration)
+    {
+        var now = clock.Now;
+        // Never move backwards: running ahead of the clock (a burst after a re-anchor) is kept.
+        var timestamp = _nextTimestamp is { } next && now - next <= ReanchorTolerance ? next : now;
+        _nextTimestamp = timestamp + duration;
+        return timestamp;
     }
 
     public async ValueTask DisposeAsync()
