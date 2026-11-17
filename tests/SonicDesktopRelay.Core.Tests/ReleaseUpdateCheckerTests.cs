@@ -37,6 +37,40 @@ public sealed class ReleaseUpdateCheckerTests
     }
 
     [Fact]
+    public async Task Ci_marker_release_is_offered_as_its_numeric_version()
+    {
+        var releases = ReleaseListJson(
+            """{"tag_name":"dev-308","draft":false,"prerelease":false,"html_url":"https://github.com/releases/tag/dev-308","assets":[{"name":"FrameRelay-win-x64-0.0.308.msi","browser_download_url":"https://example.test/0.0.308.msi"}]}""",
+            """{"tag_name":"dev-306","draft":false,"prerelease":false,"html_url":"https://github.com/releases/tag/dev-306"}""");
+        await using var checker = CreateChecker("0.0.302", releases);
+
+        var result = await checker.CheckAsync();
+
+        Assert.Equal(UpdateCheckStatus.UpdateAvailable, result.Status);
+        Assert.Equal("0.0.308", result.AvailableVersion);
+        Assert.Equal("https://example.test/0.0.308.msi", result.DownloadUri?.ToString());
+    }
+
+    [Fact]
+    public async Task Installed_ci_marker_version_is_up_to_date_with_its_own_release()
+    {
+        await using var checker = CreateChecker("0.0.308", ReleaseJson("dev-308"));
+
+        Assert.Equal(UpdateCheckStatus.UpToDate, (await checker.CheckAsync()).Status);
+    }
+
+    [Theory]
+    [InlineData("dev-")]
+    [InlineData("dev-01")]
+    [InlineData("dev-3a")]
+    public async Task Malformed_ci_marker_tag_is_not_a_version(string tag)
+    {
+        await using var checker = CreateChecker("0.0.1", ReleaseJson(tag));
+
+        Assert.Equal(UpdateCheckStatus.InvalidMetadata, (await checker.CheckAsync()).Status);
+    }
+
+    [Fact]
     public async Task Stable_latest_release_is_compared_as_semver_and_current_version_is_reported()
     {
         await using var checker = CreateChecker("2.0.0", ReleaseJson("v2.0.0"));

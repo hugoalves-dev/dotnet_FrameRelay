@@ -32,6 +32,7 @@ public sealed class ReleaseUpdateChecker : IAsyncDisposable
     private const string FallbackFullName = "hugoalves-dev/dotnet_FrameRelay";
     private static readonly Uri ApiRoot = new("https://api.github.com/");
     private static readonly Regex SemVer = new(@"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex CiMarker = new(@"^dev-([1-9]\d*)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly HttpClient _httpClient;
     private readonly bool _ownsClient;
     private readonly TimeProvider _timeProvider;
@@ -241,6 +242,9 @@ public sealed class ReleaseUpdateChecker : IAsyncDisposable
     {
         text = text?.Trim();
         if (text?.StartsWith('v') == true) text = text[1..];
+        // CI publishes builds of main as "dev-N" marker releases whose product version is 0.0.N.
+        var marker = text is null ? Match.Empty : CiMarker.Match(text);
+        if (marker.Success) text = $"0.0.{marker.Groups[1].Value}";
         var match = text is null ? Match.Empty : SemVer.Match(text);
         if (!match.Success || !ValidPreRelease(match.Groups[4].Value)
             || !int.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var major)

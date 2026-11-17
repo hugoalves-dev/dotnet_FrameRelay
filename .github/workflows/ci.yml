@@ -331,6 +331,7 @@ jobs:
             --no-restore `
             -p:PublishSingleFile=false `
             -p:DebugType=embedded `
+            -p:Version=${{ steps.metadata.outputs.display_version }} `
             -o $publishDir
 
           @"
@@ -358,6 +359,7 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
             -p:DebugType=embedded `
+            -p:Version=${{ steps.metadata.outputs.display_version }} `
             -o $singleFileDir
 
       - name: Build and verify MSI
