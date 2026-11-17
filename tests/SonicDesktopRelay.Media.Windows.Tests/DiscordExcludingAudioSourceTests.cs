@@ -22,11 +22,11 @@ public sealed class DiscordExcludingAudioSourceTests
         Assert.Equal(2, factory.NormalCalls);
         pid = 42;
         var old = factory.Current!;
-        old.Push(); // Never forward an endpoint packet after Discord appeared.
-        Assert.Equal(1, frames);
-        await source.RefreshAsync();
+        await source.RefreshAsync(); // The monitor tick that observes Discord.
         Assert.Equal((uint)42, factory.Excluded.Single());
         Assert.True(old.Disposed);
+        old.Push(); // Never forward an endpoint packet once Discord was observed.
+        Assert.Equal(1, frames);
         factory.Current!.Push();
         Assert.Equal(2, frames);
         pid = 99;
@@ -58,6 +58,25 @@ public sealed class DiscordExcludingAudioSourceTests
     }
 
     [Fact]
+    public async Task Delivered_frames_do_not_snapshot_processes()
+    {
+        var factory = new Factory();
+        var lookups = 0;
+        await using var source = new DiscordExcludingAudioSource(factory,
+            () => { lookups++; return 42u; }, () => true, monitor: false);
+        await source.SetIgnoreDiscordAudioAsync(true);
+        await source.StartAsync(default);
+        var frames = 0;
+        source.AudioCaptured += _ => frames++;
+        var lookupsAfterSelection = lookups;
+
+        for (var i = 0; i < 10; i++) factory.Current!.Push();
+
+        Assert.Equal(10, frames);
+        Assert.Equal(lookupsAfterSelection, lookups); // Only the 250 ms monitor refresh looks up Discord.
+    }
+
+    [Fact]
     public async Task Detection_failure_suppresses_existing_unfiltered_capture()
     {
         var factory = new Factory();
@@ -69,10 +88,11 @@ public sealed class DiscordExcludingAudioSourceTests
         var frames = 0;
         source.AudioCaptured += _ => frames++;
         fail = true;
-        factory.Current!.Push();
+        var unfiltered = factory.Current!;
         await source.RefreshAsync();
+        unfiltered.Push();
         Assert.Equal(0, frames);
-        Assert.True(factory.Current.Disposed);
+        Assert.True(unfiltered.Disposed);
         Assert.Contains("lookup denied", source.DegradedReason);
     }
 
@@ -119,14 +139,13 @@ public sealed class DiscordExcludingAudioSourceTests
         await source.StartAsync(default);
         var frames = new List<AudioFrame>();
         source.AudioCaptured += frames.Add;
-        factory.Current!.Push(new byte[1000]);
+        var endpoint = factory.Current!;
+        endpoint.Push(new byte[1000]);
         pid = 42;
-        factory.Current.Push(Enumerable.Repeat((byte)123, 1000).ToArray());
-        pid = null;
-        // The PID returned to null before the timer or a completed frame observed it.
-        factory.Current.Push(new byte[1840]);
+        endpoint.Push(Enumerable.Repeat((byte)123, 1000).ToArray());
+        await source.RefreshAsync(); // Switching capture drops the endpoint's partial PCM.
+        endpoint.Push(new byte[1840]);
         Assert.Empty(frames);
-        await source.RefreshAsync();
         factory.Current!.Push();
         Assert.All(Assert.Single(frames).Data.ToArray(), value => Assert.Equal((byte)0, value));
     }
